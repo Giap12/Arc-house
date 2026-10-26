@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Arc House</title>
+<style>
+:root{--bg:#f4f6fa;--card:#fff;--ink:#14213d;--mut:#5d6679;--line:#dde2ec;--acc:#2447e8;--accbg:#e7ecfd;--ok:#1e8a5a;--warn:#b7791f;--bad:#c0392b}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1524;--card:#18203a;--ink:#eef1f8;--mut:#9aa4bd;--line:#2a3452;--acc:#8ca4ff;--accbg:#222d52;--ok:#4cc38a;--warn:#e9b05a;--bad:#ff8a80}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+h1,h2,h3{font-family:Georgia,"Iowan Old Style",serif;font-weight:700;margin:0}
+.wrap{max-width:880px;margin:0 auto;padding:16px}
+header{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:8px 0 16px}
+.brand h1{font-size:28px;letter-spacing:-.5px}.brand small{color:var(--mut);display:block}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 14px;border-radius:8px}
+button:hover{border-color:var(--acc)}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button.p{background:var(--acc);color:#fff;border-color:var(--acc)}
+@media(prefers-color-scheme:dark){button.p{color:#0f1524}}
+button:disabled{opacity:.5;cursor:not-allowed}
+nav{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px}
+nav button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:10px 14px}
+nav button.on{border-bottom-color:var(--acc);font-weight:600}
+.banner{background:var(--accbg);padding:8px 12px;border-radius:8px;font-size:14px;margin-bottom:12px}
+.item{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:12px}
+.item h3{font-size:19px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.mut{color:var(--mut);font-size:14px}
+.tag{font-size:13px;padding:2px 8px;border-radius:99px;background:var(--accbg)}
+.bar{display:flex;gap:4px;margin:12px 0}.bar i{flex:1;height:8px;border-radius:4px;background:var(--line)}
+.bar i.s1{background:var(--warn)}.bar i.s2{background:var(--ok)}.bar i.s3{background:var(--bad)}.bar i.s4{background:var(--mut)}
+.ms{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:14px;padding:6px 0;border-top:1px dashed var(--line)}
+label{display:block;font-size:14px;margin:12px 0 4px;color:var(--mut)}
+input,select,textarea{width:100%;font:inherit;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.chk{display:flex;align-items:center;gap:8px}.chk input{width:auto}
+details{margin-top:24px}summary{cursor:pointer;color:var(--mut)}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;max-width:90%;display:none}
+a{color:var(--acc)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="brand"><h1>Arc House</h1><small>Đăng việc, trả USDC theo cột mốc, có bằng chứng.</small></div>
+  <div class="row"><span class="tag" id="net">Chưa kết nối</span><button class="p" id="conn">Kết nối ví</button></div>
+</header>
+<div class="banner">Đang chạy trên <b>Arc Testnet</b>, chưa kiểm toán. Chỉ dùng USDC testnet.</div>
+<div id="demo" class="banner" style="display:none">Chế độ xem thử: chưa có địa chỉ hợp đồng nên đang hiện dữ liệu mẫu. Nhập địa chỉ ở mục Cấu hình bên dưới để dùng thật.</div>
+<nav id="tabs"><button data-t="explore" class="on">Khám phá</button><button data-t="new">Đăng bounty</button><button data-t="mine">Việc của tôi</button></nav>
+<main id="main"></main>
+<details><summary>Cấu hình</summary>
+  <label>Địa chỉ BountyEscrow</label><input id="c_esc" placeholder="0x...">
+  <label>RPC URL của Arc Testnet</label><input id="c_rpc" placeholder="https://...">
+  <label>Explorer (ArcScan) URL</label><input id="c_exp" placeholder="https://...">
+  <label>Block triển khai</label><input id="c_blk" type="number" value="0">
+  <div class="row" style="margin-top:12px"><button id="c_save" class="p">Lưu cấu hình</button></div>
+</details>
+</div>
+<div id="toast" role="status"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<script>
+const CFG={escrow:"",usdc:"0x3600000000000000000000000000000000000000",chainId:5042002,name:"Arc Testnet",rpc:"",explorer:"",fromBlock:0,dec:6};
+try{Object.assign(CFG,JSON.parse(localStorage.getItem("arcHouseCfg")||"{}"))}catch(e){}
+const BT="(address poster,address reviewer,address worker,uint64 deadline,uint8 status,bool openClaim,uint8 milestoneCount,bytes32 category,string metadataURI)";
+const MT="(uint256 amount,uint64 dueAt,uint64 submittedAt,uint8 revisions,uint64 disputedAt,uint8 status,bytes32 deliverableHash,string deliverableURI)";
+const ABI=[
+"event BountyCreated(uint256 indexed id,address indexed poster,address reviewer,uint256 total,uint64 deadline,bytes32 category,string metadataURI)",
+"function createBounty((address reviewer,uint64 deadline,bool openClaim,bytes32 category,string metadataURI,uint256[] milestoneAmounts) p) returns (uint256)",
+"function getBounty(uint256) view returns "+BT,
+"function getMilestones(uint256) view returns "+MT+"[]",
+"function apply(uint256 id,string noteURI)","function claim(uint256 id)","function assignWorker(uint256 id,address worker)","function cancel(uint256 id)",
+"function submitMilestone(uint256 id,uint256 idx,string uri,bytes32 hash)","function approveMilestone(uint256 id,uint256 idx)",
+"function requestChanges(uint256 id,uint256 idx,string reasonURI)","function autoRelease(uint256 id,uint256 idx)",
+"function raiseDispute(uint256 id,uint256 idx)","function resolveStaleDispute(uint256 id,uint256 idx)","function refundExpired(uint256 id,uint256 idx)"];
+const ERC=["function approve(address,uint256) returns (bool)","function allowance(address,address) view returns (uint256)","function balanceOf(address) view returns (uint256)","function decimals() view returns (uint8)"];
+const REVIEW=5*86400,STALE=14*86400,MAXREV=2;
+const BST=["Đang mở","Đang làm","Đã đóng","Đã huỷ"],MST=["Chờ nộp","Chờ duyệt","Đã trả","Tranh chấp","Đã hoàn"];
+const S={addr:null,signer:null,esc:null,usdc:null,list:[],tab:"explore"};
+const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const now=()=>Math.floor(Date.now()/1000),short=a=>a?a.slice(0,6)+"…"+a.slice(-4):"—";
+const fmt=v=>ethers.formatUnits(v,CFG.dec),same=(a,b)=>a&&b&&a.toLowerCase()===b.toLowerCase();
+function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display="none",5000)}
+function errMsg(e){const m=(e.shortMessage||e.reason||e.message||"Lỗi không xác định");if(/user rejected|ACTION_REJECTED/i.test(m))return"Bạn đã từ chối giao dịch.";if(/insufficient funds/i.test(m))return"Ví không đủ USDC để trả gas.";return m.slice(0,160)}
+const DEMO=[
+{id:1,poster:"0x1111111111111111111111111111111111111111",reviewer:"0x1111111111111111111111111111111111111111",worker:ethers.ZeroAddress,deadline:now()+864000,status:0,openClaim:true,cat:"translation",uri:"",title:"Dịch tài liệu nhà phát triển sang tiếng Việt",ms:[{amount:25000000n,dueAt:now()+864000,submittedAt:0,revisions:0,disputedAt:0,status:0,uri:""},{amount:25000000n,dueAt:now()+864000,submittedAt:0,revisions:0,disputedAt:0,status:0,uri:""}]},
+{id:2,poster:"0x2222222222222222222222222222222222222222",reviewer:"0x2222222222222222222222222222222222222222",worker:"0x3333333333333333333333333333333333333333",deadline:now()+432000,status:1,openClaim:false,cat:"design",uri:"",title:"Bộ huy hiệu cho thành viên cộng đồng",ms:[{amount:40000000n,dueAt:now()+432000,submittedAt:now()-3600,revisions:0,disputedAt:0,status:1,uri:"ipfs://demo"}]}];
+function norm(id,b,ms){return{id:Number(id),poster:b.poster,reviewer:b.reviewer,worker:b.worker,deadline:Number(b.deadline),status:Number(b.status),openClaim:b.openClaim,cat:ethers.decodeBytes32String(b.category),uri:b.metadataURI,title:"",ms:ms.map(m=>({amount:m.amount,dueAt:Number(m.dueAt),submittedAt:Number(m.submittedAt),revisions:Number(m.revisions),disputedAt:Number(m.disputedAt),status:Number(m.status),uri:m.deliverableURI}))}}
+async function loadTitle(b){if(!b.uri||!b.uri.startsWith("ipfs://"))return;try{const r=await fetch("https://ipfs.io/ipfs/"+b.uri.slice(7));const j=await r.json();b.title=j.title||"";render()}catch(e){}}
+function reader(){if(S.esc)return S.esc;if(CFG.rpc&&CFG.escrow)return new ethers.Contract(CFG.escrow,ABI,new ethers.JsonRpcProvider(CFG.rpc));return null}
+async function load(){
+  const c=reader();$("#demo").style.display=c?"none":"block";
+  if(!c){S.list=DEMO;render();return}
+  try{const ev=await c.queryFilter(c.filters.BountyCreated(),Number(CFG.fromBlock)||0);const out=[];
+    for(const e of ev){const id=e.args.id;const[b,ms]=await Promise.all([c.getBounty(id),c.getMilestones(id)]);out.push(norm(id,b,ms))}
+    S.list=out.reverse();render();S.list.forEach(loadTitle)}catch(e){toast("Không đọc được dữ liệu: "+errMsg(e));S.list=[];render()}}
+async function connect(){
+  if(!window.ethereum){toast("Chưa có ví. Hãy cài MetaMask.");return}
+  try{const p=new ethers.BrowserProvider(window.ethereum);await p.send("eth_requestAccounts",[]);
+    const hex="0x"+CFG.chainId.toString(16);
+    try{await p.send("wallet_switchEthereumChain",[{chainId:hex}])}catch(e){
+      if(e.code===4902||/unrecognized/i.test(e.message||"")){if(!CFG.rpc){toast("Nhập RPC URL ở mục Cấu hình để thêm mạng Arc.");return}
+        await p.send("wallet_addEthereumChain",[{chainId:hex,chainName:CFG.name,rpcUrls:[CFG.rpc],blockExplorerUrls:CFG.explorer?[CFG.explorer]:undefined,nativeCurrency:{name:"USDC",symbol:"USDC",decimals:18}}])}else throw e}
+    const p2=new ethers.BrowserProvider(window.ethereum);S.signer=await p2.getSigner();S.addr=await S.signer.getAddress();
+    S.usdc=new ethers.Contract(CFG.usdc,ERC,S.signer);try{CFG.dec=Number(await S.usdc.decimals())}catch(e){}
+    if(CFG.escrow)S.esc=new ethers.Contract(CFG.escrow,ABI,S.signer);
+    $("#net").textContent=CFG.name;$("#conn").textContent=short(S.addr);await load()}catch(e){toast(errMsg(e))}}
+async function tx(label,fn){if(!S.esc){toast("Cần kết nối ví và nhập địa chỉ hợp đồng.");return}
+  try{toast(label+"…");const t=await fn();toast("Đang chờ xác nhận…");await t.wait();toast(label+": xong.");await load()}catch(e){toast(errMsg(e))}}
+function actions(b){const me=S.addr,a=[],t=now(),first=b.ms.findIndex(m=>[0,1,3].includes(m.status));
+  const A=(l,f,p)=>a.push({l,f,p});
+  if(b.status===0){
+    if(same(me,b.poster)){A("Giao việc","assign");A("Huỷ bounty","cancel")}
+    else if(me&&!same(me,b.reviewer)){A("Ứng tuyển","apply");if(b.openClaim)A("Nhận việc ngay","claim")}
+    if(t>b.ms[0].dueAt)A("Hoàn tiền","refund",0)}
+  if(b.status===1)b.ms.forEach((m,i)=>{
+    if(m.status===0){if(same(me,b.worker)&&i===first&&t<=m.dueAt)A(`Nộp cột mốc ${i+1}`,"submit",i);if(t>m.dueAt)A(`Hoàn tiền cột mốc ${i+1}`,"refund",i)}
+    if(m.status===1){if(same(me,b.reviewer)){A(`Duyệt cột mốc ${i+1}`,"approve",i);if(m.revisions<MAXREV)A("Yêu cầu sửa","changes",i)}
+      if(same(me,b.worker)||same(me,b.reviewer)||same(me,b.poster))A("Tranh chấp","dispute",i);if(t>=m.submittedAt+REVIEW)A("Giải ngân tự động","auto",i)}
+    if(m.status===3&&t>m.disputedAt+STALE)A("Chia 50/50 (quá hạn)","stale",i)});
+  return a}
+async function run(id,f,p){const c=S.esc,b=S.list.find(x=>x.id===id);
+  const ask=(q)=>{const v=prompt(q);if(!v)throw new Error("Đã huỷ.");return v};
+  const map={
+    apply:()=>tx("Ứng tuyển",()=>c.apply(id,prompt("Link giới thiệu bản thân (tuỳ chọn)")||"")),
+    claim:()=>tx("Nhận việc",()=>c.claim(id)),
+    assign:()=>tx("Giao việc",()=>c.assignWorker(id,ask("Địa chỉ ví người nhận việc (0x...)"))),
+    cancel:()=>tx("Huỷ bounty",()=>c.cancel(id)),
+    submit:()=>tx("Nộp cột mốc",()=>{const u=ask("Link sản phẩm (ipfs://... hoặc https://...)");return c.submitMilestone(id,p,u,ethers.keccak256(ethers.toUtf8Bytes(u)))}),
+    approve:()=>tx("Duyệt",()=>c.approveMilestone(id,p)),
+    changes:()=>tx("Yêu cầu sửa",()=>c.requestChanges(id,p,ask("Link hoặc lý do cần sửa"))),
+    auto:()=>tx("Giải ngân",()=>c.autoRelease(id,p)),
+    dispute:()=>tx("Mở tranh chấp",()=>c.raiseDispute(id,p)),
+    stale:()=>tx("Chia tranh chấp",()=>c.resolveStaleDispute(id,p)),
+    refund:()=>tx("Hoàn tiền",()=>c.refundExpired(id,p))};
+  if(!c){toast("Cần kết nối ví và nhập địa chỉ hợp đồng.");return}
+  try{await map[f]()}catch(e){toast(errMsg(e))}}
+function card(b){const total=b.ms.reduce((s,m)=>s+m.amount,0n),days=Math.ceil((b.deadline-now())/86400);
+  const bar=b.ms.map(m=>`<i class="s${m.status===2?2:m.status===1?1:m.status===3?3:m.status===4?4:0}" title="${MST[m.status]}"></i>`).join("");
+  const acts=actions(b).map(x=>`<button data-id="${b.id}" data-f="${x.f}" data-p="${x.p??""}">${esc(x.l)}</button>`).join("");
+  const ms=b.ms.map((m,i)=>`<div class="ms"><span>Cột mốc ${i+1}: ${fmt(m.amount)} USDC</span><span class="mut">${MST[m.status]}${m.uri?` · <a href="${esc(m.uri.replace("ipfs://","https://ipfs.io/ipfs/"))}" target="_blank" rel="noopener">sản phẩm</a>`:""}</span></div>`).join("");
+  return`<article class="item"><div class="row" style="justify-content:space-between"><h3>${esc(b.title||"Bounty #"+b.id)}</h3><b>${fmt(total)} USDC</b></div>
+  <div class="row mut"><span class="tag">${esc(b.cat)}</span><span>${BST[b.status]}</span><span>${days>0?"còn "+days+" ngày":"đã quá hạn"}</span><span>Người đăng ${short(b.poster)}</span>${b.worker!==ethers.ZeroAddress?`<span>Người làm ${short(b.worker)}</span>`:""}</div>
+  <div class="bar" aria-label="Tiến độ">${bar}</div>${ms}<div class="row" style="margin-top:12px">${acts}</div></article>`}
+function list(items,empty){return items.length?items.map(card).join(""):`<p class="mut">${empty}</p>`}
+function render(){
+  document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===S.tab));
+  const m=$("#main"),me=S.addr;
+  if(S.tab==="explore")m.innerHTML=list(S.list.filter(b=>b.status===0),"Chưa có bounty nào đang mở. Hãy đăng bounty đầu tiên.");
+  if(S.tab==="mine")m.innerHTML=me?list(S.list.filter(b=>[b.poster,b.worker,b.reviewer].some(a=>same(a,me))),"Bạn chưa tham gia bounty nào."):`<p class="mut">Kết nối ví để xem việc của bạn.</p>`;
+  if(S.tab==="new")m.innerHTML=`<form id="f" class="item"><h2>Đăng bounty mới</h2>
+  <label>Danh mục</label><select id="n_cat"><option>translation</option><option>design</option><option>development</option><option>content</option><option>testing</option><option>other</option></select>
+  <label>Tiêu đề</label><input id="n_title" required>
+  <label>Mô tả công việc</label><textarea id="n_desc" rows="4"></textarea>
+  <label>Thưởng từng cột mốc (USDC, cách nhau bằng dấu phẩy, tối đa 5)</label><input id="n_amt" placeholder="20, 30" required>
+  <label>Hạn chót (số ngày, từ 1 đến 180)</label><input id="n_days" type="number" min="1" max="180" value="14">
+  <label>Ví người duyệt (để trống nếu là bạn)</label><input id="n_rev" placeholder="0x...">
+  <label>Link IPFS của mô tả (ipfs://..., tối đa 256 ký tự)</label><input id="n_uri" placeholder="ipfs://...">
+  <div class="chk" style="margin-top:12px"><input id="n_open" type="checkbox" checked><label style="margin:0">Ai nhanh tay được nhận việc</label></div>
+  <div class="row" style="margin-top:16px"><button type="button" id="n_json">1. Tải file mô tả (JSON)</button><button class="p" type="submit">2. Khoá USDC và đăng</button></div>
+  <p class="mut">Tải file JSON, đưa lên IPFS (ví dụ Pinata), rồi dán link vào ô trên. Ví cần đủ USDC cho tiền thưởng và gas.</p></form>`}
+$("#tabs").onclick=e=>{const t=e.target.dataset.t;if(t){S.tab=t;render()}};
+$("#main").onclick=e=>{const b=e.target.closest("button[data-f]");if(b)run(Number(b.dataset.id),b.dataset.f,b.dataset.p===""?undefined:Number(b.dataset.p))};
+$("#main").addEventListener("click",e=>{if(e.target.id==="n_json"){
+  const j={version:1,title:$("#n_title").value,description:$("#n_desc").value,category:$("#n_cat").value,createdAt:new Date().toISOString()};
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(j,null,2)],{type:"application/json"}));a.download="bounty.json";a.click()}});
+$("#main").addEventListener("submit",async e=>{if(e.target.id!=="f")return;e.preventDefault();
+  if(!S.esc){toast("Cần kết nối ví và nhập địa chỉ hợp đồng.");return}
+  try{const amts=$("#n_amt").value.split(",").map(s=>ethers.parseUnits(s.trim(),CFG.dec));
+    if(!amts.length||amts.length>5||amts.some(a=>a<=0n))throw new Error("Cần từ 1 đến 5 cột mốc, mỗi cột mốc lớn hơn 0.");
+    const days=Number($("#n_days").value);if(!(days>=1&&days<=180))throw new Error("Hạn chót phải từ 1 đến 180 ngày.");
+    const uri=$("#n_uri").value.trim();if(new TextEncoder().encode(uri).length>256)throw new Error("Link quá dài (tối đa 256 byte).");
+    const rev=$("#n_rev").value.trim()||S.addr,total=amts.reduce((s,a)=>s+a,0n);
+    if(!ethers.isAddress(rev))throw new Error("Địa chỉ người duyệt không hợp lệ.");
+    if(await S.usdc.balanceOf(S.addr)<total)throw new Error("Số dư USDC không đủ.");
+    if(await S.usdc.allowance(S.addr,CFG.escrow)<total){toast("Cho phép hợp đồng dùng USDC…");await(await S.usdc.approve(CFG.escrow,total)).wait()}
+    await tx("Đăng bounty",()=>S.esc.createBounty({reviewer:rev,deadline:now()+days*86400,openClaim:$("#n_open").checked,category:ethers.encodeBytes32String($("#n_cat").value),metadataURI:uri,milestoneAmounts:amts}));
+    S.tab="explore";render()}catch(e){toast(errMsg(e))}});
+$("#conn").onclick=connect;
+["esc","rpc","exp","blk"].forEach(k=>{const m={esc:"escrow",rpc:"rpc",exp:"explorer",blk:"fromBlock"};$("#c_"+k).value=CFG[m[k]]||(k==="blk"?0:"")});
+$("#c_save").onclick=()=>{const v=k=>$("#c_"+k).value.trim();
+  if(v("esc")&&!ethers.isAddress(v("esc"))){toast("Địa chỉ hợp đồng không hợp lệ.");return}
+  Object.assign(CFG,{escrow:v("esc"),rpc:v("rpc"),explorer:v("exp"),fromBlock:Number(v("blk"))||0});
+  try{localStorage.setItem("arcHouseCfg",JSON.stringify({escrow:CFG.escrow,rpc:CFG.rpc,explorer:CFG.explorer,fromBlock:CFG.fromBlock}))}catch(e){}
+  if(S.signer&&CFG.escrow)S.esc=new ethers.Contract(CFG.escrow,ABI,S.signer);toast("Đã lưu cấu hình.");load()};
+load();
+</script>
+</body>
+</html>
